@@ -1,0 +1,177 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+
+  "Description": "Front End S3 Bucket with CloudFront",
+
+  "Parameters": {
+    "DomainName": {
+      "Type": "String",
+      "Description": "Domain name to use for Hosted Zone",
+      "AllowedPattern": "(?!-)[a-zA-Z0-9-.]{1,63}(?<!-)",
+      "ConstraintDescription": "must be a valid domain name."
+    }
+  },
+
+  "Mappings": {
+    "Region2S3WebsiteSuffix": {
+      "us-east-1": {
+        "Suffix": ".s3-website-us-east-1.amazonaws.com"
+      },
+      "us-west-1": {
+        "Suffix": ".s3-website-us-west-1.amazonaws.com"
+      },
+      "us-west-2": {
+        "Suffix": ".s3-website-us-west-2.amazonaws.com"
+      },
+      "eu-west-1": {
+        "Suffix": ".s3-website-eu-west-1.amazonaws.com"
+      },
+      "ap-northeast-1": {
+        "Suffix": ".s3-website-ap-northeast-1.amazonaws.com"
+      },
+      "ap-southeast-1": {
+        "Suffix": ".s3-website-ap-southeast-1.amazonaws.com"
+      },
+      "ap-southeast-2": {
+        "Suffix": ".s3-website-ap-southeast-2.amazonaws.com"
+      },
+      "sa-east-1": {
+        "Suffix": ".s3-website-sa-east-1.amazonaws.com"
+      },
+      "cn-north-1": {
+        "Suffix": ".s3-website.cn-north-1.amazonaws.com.cn"
+      },
+      "eu-central-1": {
+        "Suffix": ".s3-website-eu-central-1.amazonaws.com"
+      }
+    }
+  },
+
+  "Resources": {
+    "HostedZone": {
+      "Type": "AWS::Route53::HostedZone",
+      "Properties": {
+        "HostedZoneConfig": {
+          "Comment": "Hosted Zone"
+        },
+        "Name": {
+          "Ref": "DomainName"
+        }
+      }
+    },
+
+    "FrontEndAlias": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "HostedZoneId": {
+          "Ref": "HostedZone"
+        },
+        "Comment": "Alias for CloudFront distribution",
+        "Name": {
+          "Ref": "DomainName"
+        },
+        "Type": "A",
+        "AliasTarget": {
+          "HostedZoneId": {
+            "Ref": "HostedZone"
+          },
+          "DNSName": {
+            "Ref": "FrontEndCDN"
+          }
+        }
+      }
+    },
+
+    "FrontEndCDN": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Comment": "CDN for S3-backed website",
+          "Enabled": "true",
+          "DefaultRootObject": "index.html",
+          "Origins": [{
+            "Id": "webbysolutions",
+            "DomainName": {
+              "Fn::Join": ["", [{
+                "Ref": "FrontEndBucket"
+              }, {
+                "Fn::FindInMap": ["Region2S3WebsiteSuffix", {
+                  "Ref": "AWS::Region"
+                }, "Suffix"]
+              }]]
+            },
+            "CustomOriginConfig": {
+              "HTTPPort": "80",
+              "HTTPSPort": "443",
+              "OriginProtocolPolicy": "http-only"
+            }
+          }],
+          "DefaultCacheBehavior": {
+            "TargetOriginId": "webbysolutions",
+            "ForwardedValues": {
+              "QueryString": "false",
+              "Cookies": {
+                "Forward": "all"
+              }
+            },
+            "ViewerProtocolPolicy": "allow-all"
+          },
+          "CustomErrorResponses": [{
+            "ErrorCode": "404",
+            "ResponsePagePath": "/page-not-found.html",
+            "ResponseCode": "200",
+            "ErrorCachingMinTTL": "30"
+          }],
+          "PriceClass": "PriceClass_100",
+          "ViewerCertificate": {
+            "CloudFrontDefaultCertificate": "true"
+          }
+        }
+      }
+    },
+
+    "FrontEndBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "AccessControl": "PublicRead",
+        "WebsiteConfiguration": {
+          "IndexDocument": "index.html",
+          "ErrorDocument": "error.html"
+        }
+      }
+    },
+
+    "FrontEndLoggingBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {},
+      "DeletionPolicy": "Retain"
+    }
+  },
+
+  "Outputs": {
+    "FrontEndBucketName": {
+      "Value": {
+        "Ref": "FrontEndBucket"
+      },
+      "Description": "Name of S3 bucket to hold website content"
+    },
+
+    "FrontEndBucketSecureURL": {
+      "Value": {
+        "Fn::Join": ["", ["https://", {
+          "Fn::GetAtt": ["FrontEndBucket", "DomainName"]
+        }]]
+      },
+      "Description": "Secure URL of S3 bucket to hold website content"
+    },
+
+    "FrontEndURL": {
+      "Value": {
+        "Fn::Join": ["", ["http://", {
+          "Ref": "FrontEndAlias"
+        }]]
+      },
+      "Description": "The URL of the newly created website"
+    }
+  }
+}

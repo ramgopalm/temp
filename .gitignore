@@ -1,21 +1,6 @@
-lib-cov
-*.seed
-*.log
-*.csv
-*.dat
-*.out
-*.pid
-*.gz
-*.swp
-
-*.rdb
-
-pids
-logs
-results
-
-npm-debug.log
-
-node_modules
-.sass-cache
-.idea/
+node_modules/
+npm-debug.log
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml

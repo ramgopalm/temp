@@ -1,0 +1,1171 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+
+  "Description": "Api Server, Load Balancer, Auto Scaling,",
+
+  "Parameters": {
+    "KeyName": {
+      "Description": "Name of an existing EC2 KeyPair to enable SSH access to the instances",
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "ConstraintDescription": "must be the name of an existing EC2 KeyPair."
+    },
+
+    "TagKey": {
+      "Description": "The EC2 tag key that identifies this as a target for deployments.",
+      "Type": "String",
+      "Default": "Name",
+      "AllowedPattern": "[\\x20-\\x7E]*",
+      "ConstraintDescription": "Can contain only ASCII characters."
+    },
+
+    "TagValue": {
+      "Description": "The EC2 tag value that identifies this as a target for deployments.",
+      "Type": "String",
+      "AllowedPattern": "[\\x20-\\x7E]*",
+      "ConstraintDescription": "Can contain only ASCII characters."
+    },
+
+    "VPC": {
+      "Description": "VPC",
+      "Type": "String"
+    },
+
+    "PublicSubnet": {
+      "Description": "PublicSubnet",
+      "Type": "String"
+    },
+
+    "PublicSubnetAvailabilityZones": {
+      "Description": "PublicSubnet Availability Zones",
+      "Type": "String"
+    },
+
+    "CommonSecurityGroup": {
+      "Description": "Common Security Group",
+      "Type": "String"
+    },
+
+    "PublicLoadBalancerSecurityGroup": {
+      "Description": "Public Load Balancer Security Group",
+      "Type": "String"
+    },
+
+    "ApiServerInstanceType": {
+      "Description": "ApiServer Server EC2 instance type",
+      "Type": "String",
+      "Default": "t2.micro",
+      "AllowedValues": ["t1.micro", "t2.micro", "t2.small", "t2.medium", "m1.small", "m1.medium", "m1.large", "m1.xlarge", "m2.xlarge", "m2.2xlarge", "m2.4xlarge", "m3.medium", "m3.large", "m3.xlarge", "m3.2xlarge", "c1.medium", "c1.xlarge", "c3.large", "c3.xlarge", "c3.2xlarge", "c3.4xlarge", "c3.8xlarge", "g2.2xlarge", "r3.large", "r3.xlarge", "r3.2xlarge", "r3.4xlarge", "r3.8xlarge", "i2.xlarge", "i2.2xlarge", "i2.4xlarge", "i2.8xlarge", "hi1.4xlarge", "hs1.8xlarge", "cr1.8xlarge", "cc2.8xlarge", "cg1.4xlarge"],
+      "ConstraintDescription": "must be a valid EC2 instance type."
+    },
+
+    "ApiServerCount": {
+      "Description": "Number of EC2 instances to launch for the ApiServer server",
+      "Type": "Number",
+      "Default": "1"
+    },
+
+    "ApiServerPort": {
+      "Description": "The port on which to run the Api Server",
+      "Type": "String",
+      "Default": "80",
+      "AllowedPattern": "^([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$"
+    },
+
+    "OperatorEmail": {
+      "Description": "Email address to notify if there are any scaling operations",
+      "Type": "String",
+      "AllowedPattern": "([a-zA-Z0-9_\\-\\.]+)@((\\[[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.)|(([a-zA-Z0-9\\-]+\\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\\]?)",
+      "ConstraintDescription": "must be a valid email address."
+    },
+
+    "SSHLocation": {
+      "Description": "Lockdown SSH access to the bastion host (default can be accessed from anywhere)",
+      "Type": "String",
+      "MinLength": "9",
+      "MaxLength": "18",
+      "Default": "0.0.0.0/0",
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+      "ConstraintDescription": "must be a valid CIDR range of the form x.x.x.x/x."
+    },
+
+    "EnvNodeEnv": {
+      "Description": "Environment variable for NODE_ENV",
+      "Type": "String",
+      "Default": "production"
+    },
+
+    "EnvDbServer": {
+      "Description": "Environment variable for DB Server",
+      "Type": "String",
+      "Default": "RDS_ENDPOINT.rds.amazonaws.com:5432/"
+    },
+
+    "EnvDbName": {
+      "Description": "Environment variable for DB Name",
+      "Type": "String"
+    },
+
+    "EnvTokenSecret": {
+      "NoEcho": "true",
+      "Description": "Environment variable for Token Secret",
+      "Type": "String",
+      "Default": "itsasecret"
+    },
+
+    "EnvMandrillUser": {
+      "Description": "Environment variable for Mandrill User",
+      "Type": "String"
+    },
+
+    "EnvMandrillPassword": {
+      "NoEcho": "true",
+      "Description": "Environment variable for Mandrill Password",
+      "Type": "String"
+    },
+
+    "EnvFacebookAppId": {
+      "Description": "Environment variable for Facebook App ID",
+      "Type": "String"
+    },
+
+    "EnvFacebookSecret": {
+      "NoEcho": "true",
+      "Description": "Environment variable for Facebook App Secret",
+      "Type": "String"
+    },
+
+    "EnvGoogleAppId": {
+      "Description": "Environment variable for Google App ID",
+      "Type": "String"
+    },
+
+    "EnvGoogleSecret": {
+      "NoEcho": "true",
+      "Description": "Environment variable for Google App Secret",
+      "Type": "String"
+    }
+  },
+
+  "Mappings": {
+    "AWSInstanceType2Arch": {
+      "t1.micro": {
+        "Arch": "PV64"
+      },
+      "t2.micro": {
+        "Arch": "HVM64"
+      },
+      "t2.small": {
+        "Arch": "HVM64"
+      },
+      "t2.medium": {
+        "Arch": "HVM64"
+      },
+      "m1.small": {
+        "Arch": "PV64"
+      },
+      "m1.medium": {
+        "Arch": "PV64"
+      },
+      "m1.large": {
+        "Arch": "PV64"
+      },
+      "m1.xlarge": {
+        "Arch": "PV64"
+      },
+      "m2.xlarge": {
+        "Arch": "PV64"
+      },
+      "m2.2xlarge": {
+        "Arch": "PV64"
+      },
+      "m2.4xlarge": {
+        "Arch": "PV64"
+      },
+      "m3.medium": {
+        "Arch": "HVM64"
+      },
+      "m3.large": {
+        "Arch": "HVM64"
+      },
+      "m3.xlarge": {
+        "Arch": "HVM64"
+      },
+      "m3.2xlarge": {
+        "Arch": "HVM64"
+      },
+      "c1.medium": {
+        "Arch": "PV64"
+      },
+      "c1.xlarge": {
+        "Arch": "PV64"
+      },
+      "c3.large": {
+        "Arch": "HVM64"
+      },
+      "c3.xlarge": {
+        "Arch": "HVM64"
+      },
+      "c3.2xlarge": {
+        "Arch": "HVM64"
+      },
+      "c3.4xlarge": {
+        "Arch": "HVM64"
+      },
+      "c3.8xlarge": {
+        "Arch": "HVM64"
+      },
+      "g2.2xlarge": {
+        "Arch": "HVMG2"
+      },
+      "r3.large": {
+        "Arch": "HVM64"
+      },
+      "r3.xlarge": {
+        "Arch": "HVM64"
+      },
+      "r3.2xlarge": {
+        "Arch": "HVM64"
+      },
+      "r3.4xlarge": {
+        "Arch": "HVM64"
+      },
+      "r3.8xlarge": {
+        "Arch": "HVM64"
+      },
+      "i2.xlarge": {
+        "Arch": "HVM64"
+      },
+      "i2.2xlarge": {
+        "Arch": "HVM64"
+      },
+      "i2.4xlarge": {
+        "Arch": "HVM64"
+      },
+      "i2.8xlarge": {
+        "Arch": "HVM64"
+      },
+      "hi1.4xlarge": {
+        "Arch": "HVM64"
+      },
+      "hs1.8xlarge": {
+        "Arch": "HVM64"
+      },
+      "cr1.8xlarge": {
+        "Arch": "HVM64"
+      },
+      "cc2.8xlarge": {
+        "Arch": "HVM64"
+      }
+    },
+
+    "AWSRegionArch2AMI": {
+      "us-east-1": {
+        "PV64": "ami-50842d38",
+        "HVM64": "ami-08842d60",
+        "HVMG2": "ami-3a329952"
+      },
+      "us-west-2": {
+        "PV64": "ami-af86c69f",
+        "HVM64": "ami-8786c6b7",
+        "HVMG2": "ami-47296a77"
+      },
+      "us-west-1": {
+        "PV64": "ami-c7a8a182",
+        "HVM64": "ami-cfa8a18a",
+        "HVMG2": "ami-331b1376"
+      },
+      "eu-west-1": {
+        "PV64": "ami-aa8f28dd",
+        "HVM64": "ami-748e2903",
+        "HVMG2": "ami-00913777"
+      },
+      "ap-southeast-1": {
+        "PV64": "ami-20e1c572",
+        "HVM64": "ami-d6e1c584",
+        "HVMG2": "ami-fabe9aa8"
+      },
+      "ap-northeast-1": {
+        "PV64": "ami-21072820",
+        "HVM64": "ami-35072834",
+        "HVMG2": "ami-5dd1ff5c"
+      },
+      "ap-southeast-2": {
+        "PV64": "ami-8b4724b1",
+        "HVM64": "ami-fd4724c7",
+        "HVMG2": "ami-e98ae9d3"
+      },
+      "sa-east-1": {
+        "PV64": "ami-9d6cc680",
+        "HVM64": "ami-956cc688",
+        "HVMG2": "NOT_SUPPORTED"
+      },
+      "cn-north-1": {
+        "PV64": "ami-a857c591",
+        "HVM64": "ami-ac57c595",
+        "HVMG2": "NOT_SUPPORTED"
+      },
+      "eu-central-1": {
+        "PV64": "ami-a03503bd",
+        "HVM64": "ami-b43503a9",
+        "HVMG2": "ami-b03503ad"
+      }
+    },
+
+    "Region2Principal": {
+      "us-east-1": {
+        "EC2Principal": "ec2.amazonaws.com",
+        "OpsWorksPrincipal": "opsworks.amazonaws.com"
+      },
+      "us-west-2": {
+        "EC2Principal": "ec2.amazonaws.com",
+        "OpsWorksPrincipal": "opsworks.amazonaws.com"
+      },
+      "us-west-1": {
+        "EC2Principal": "ec2.amazonaws.com",
+        "OpsWorksPrincipal": "opsworks.amazonaws.com"
+      },
+      "eu-west-1": {
+        "EC2Principal": "ec2.amazonaws.com",
+        "OpsWorksPrincipal": "opsworks.amazonaws.com"
+      },
+      "ap-southeast-1": {
+        "EC2Principal": "ec2.amazonaws.com",
+        "OpsWorksPrincipal": "opsworks.amazonaws.com"
+      },
+      "ap-northeast-1": {
+        "EC2Principal": "ec2.amazonaws.com",
+        "OpsWorksPrincipal": "opsworks.amazonaws.com"
+      },
+      "ap-southeast-2": {
+        "EC2Principal": "ec2.amazonaws.com",
+        "OpsWorksPrincipal": "opsworks.amazonaws.com"
+      },
+      "sa-east-1": {
+        "EC2Principal": "ec2.amazonaws.com",
+        "OpsWorksPrincipal": "opsworks.amazonaws.com"
+      },
+      "cn-north-1": {
+        "EC2Principal": "ec2.amazonaws.com.cn",
+        "OpsWorksPrincipal": "opsworks.amazonaws.com.cn"
+      },
+      "eu-central-1": {
+        "EC2Principal": "ec2.amazonaws.com",
+        "OpsWorksPrincipal": "opsworks.amazonaws.com"
+      }
+    },
+
+    "Region2ARNPrefix": {
+      "us-east-1": {
+        "ARNPrefix": "arn:aws:"
+      },
+      "us-west-1": {
+        "ARNPrefix": "arn:aws:"
+      },
+      "us-west-2": {
+        "ARNPrefix": "arn:aws:"
+      },
+      "eu-west-1": {
+        "ARNPrefix": "arn:aws:"
+      },
+      "ap-northeast-1": {
+        "ARNPrefix": "arn:aws:"
+      },
+      "ap-southeast-1": {
+        "ARNPrefix": "arn:aws:"
+      },
+      "ap-southeast-2": {
+        "ARNPrefix": "arn:aws:"
+      },
+      "sa-east-1": {
+        "ARNPrefix": "arn:aws:"
+      },
+      "cn-north-1": {
+        "ARNPrefix": "arn:aws-cn:"
+      },
+      "eu-central-1": {
+        "ARNPrefix": "arn:aws:"
+      }
+    },
+
+    "Region2ELBAccountId": {
+      "us-east-1": {
+        "AccountId": "127311923021"
+      },
+      "us-west-1": {
+        "AccountId": "027434742980"
+      },
+      "us-west-2": {
+        "AccountId": "797873946194"
+      },
+      "eu-west-1": {
+        "AccountId": "156460612806"
+      },
+      "ap-northeast-1": {
+        "AccountId": "582318560864"
+      },
+      "ap-southeast-1": {
+        "AccountId": "114774131450"
+      },
+      "ap-southeast-2": {
+        "AccountId": "783225319266"
+      },
+      "sa-east-1": {
+        "AccountId": "507241528517"
+      },
+      "cn-north-1": {
+        "AccountId": "638102146993"
+      },
+      "eu-central-1": {
+        "AccountId": "589561097549"
+      }
+    }
+  },
+
+  "Resources": {
+    "PublicElasticLoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "CrossZone": "true",
+        "SecurityGroups": [{
+          "Ref": "PublicLoadBalancerSecurityGroup"
+        }],
+        "Subnets": [{
+          "Ref": "PublicSubnet"
+        }],
+        "Listeners": [{
+          "LoadBalancerPort": "80",
+          "InstancePort": "80",
+          "Protocol": "HTTP"
+        }],
+        "HealthCheck": {
+          "Target": "HTTP:80/health-check",
+          "HealthyThreshold": "3",
+          "UnhealthyThreshold": "5",
+          "Interval": "30",
+          "Timeout": "5"
+        },
+        "ConnectionDrainingPolicy": {
+          "Enabled": "true",
+          "Timeout": "300"
+        },
+        "AccessLoggingPolicy": {
+          "S3BucketName": {
+            "Ref": "LogsBucket"
+          },
+          "S3BucketPrefix": "Logs",
+          "Enabled": "true",
+          "EmitInterval": "60"
+        }
+      },
+      "DependsOn": "LogsBucketPolicy"
+    },
+
+    "ApiServerAutoScalingGroup": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "AvailabilityZones": [{
+          "Ref": "PublicSubnetAvailabilityZones"
+        }],
+        "VPCZoneIdentifier": [{
+          "Ref": "PublicSubnet"
+        }],
+        "LaunchConfigurationName": {
+          "Ref": "ApiServerLaunchConfig"
+        },
+        "MinSize": "1",
+        "MaxSize": "10",
+        "DesiredCapacity": {
+          "Ref": "ApiServerCount"
+        },
+        "LoadBalancerNames": [{
+          "Ref": "PublicElasticLoadBalancer"
+        }],
+        "NotificationConfiguration": {
+          "TopicARN": {
+            "Ref": "NotificationTopic"
+          },
+          "NotificationTypes": ["autoscaling:EC2_INSTANCE_LAUNCH",
+            "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+            "autoscaling:EC2_INSTANCE_TERMINATE",
+            "autoscaling:EC2_INSTANCE_TERMINATE_ERROR"
+          ]
+        },
+        "Tags": [{
+          "Key": "Network",
+          "Value": "Public",
+          "PropagateAtLaunch": "true"
+        }, {
+          "Key": {
+            "Ref": "TagKey"
+          },
+          "Value": {
+            "Ref": "TagValue"
+          },
+          "PropagateAtLaunch": "true"
+        }]
+      },
+      "CreationPolicy": {
+        "ResourceSignal": {
+          "Timeout": "PT45M",
+          "Count": {
+            "Ref": "ApiServerCount"
+          }
+        }
+      },
+      "UpdatePolicy": {
+        "AutoScalingRollingUpdate": {
+          "MinInstancesInService": "1",
+          "MaxBatchSize": "1",
+          "PauseTime": "PT15M",
+          "WaitOnResourceSignals": "true"
+        }
+      }
+    },
+
+    "NotificationTopic": {
+      "Type": "AWS::SNS::Topic",
+      "Properties": {
+        "Subscription": [{
+          "Endpoint": {
+            "Ref": "OperatorEmail"
+          },
+          "Protocol": "email"
+        }]
+      }
+    },
+
+    "LogsBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain"
+    },
+
+    "LogsBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "LogsBucket"
+        },
+        "PolicyDocument": {
+          "Version": "2008-10-17",
+          "Statement": [{
+            "Sid": "ELBAccessLogs20130930",
+            "Effect": "Allow",
+            "Resource": {
+              "Fn::Join": ["", [{
+                  "Fn::FindInMap": ["Region2ARNPrefix", {
+                    "Ref": "AWS::Region"
+                  }, "ARNPrefix"]
+                },
+                "s3:::", {
+                  "Ref": "LogsBucket"
+                }, "/", "Logs", "/AWSLogs/", {
+                  "Ref": "AWS::AccountId"
+                }, "/*"
+              ]]
+            },
+            "Principal": {
+              "AWS": {
+                "Fn::FindInMap": ["Region2ELBAccountId", {
+                  "Ref": "AWS::Region"
+                }, "AccountId"]
+              }
+            },
+            "Action": ["s3:PutObject"]
+          }]
+        }
+      }
+    },
+
+    "ApiServerRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {
+              "Service": [{
+                "Fn::FindInMap": ["Region2Principal", {
+                  "Ref": "AWS::Region"
+                }, "EC2Principal"]
+              }]
+            },
+            "Action": ["sts:AssumeRole"]
+          }]
+        },
+        "Path": "/",
+        "Policies": [{
+          "PolicyName": "ApiServerRolePolicy",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Effect": "Allow",
+              "Action": [
+                "autoscaling:Describe*",
+                "s3:Get*",
+                "logs:*",
+                "cloudformation:*",
+                "codedeploy:*",
+                "ec2:*",
+                "iam:AddRoleToInstanceProfile",
+                "iam:CreateInstanceProfile",
+                "iam:CreateRole",
+                "iam:DeleteInstanceProfile",
+                "iam:DeleteRole",
+                "iam:DeleteRolePolicy",
+                "iam:GetRole",
+                "iam:PassRole",
+                "iam:PutRolePolicy",
+                "iam:RemoveRoleFromInstanceProfile"
+              ],
+              "Resource": [{
+                "Fn::Join": ["", [{
+                    "Fn::FindInMap": ["Region2ARNPrefix", {
+                      "Ref": "AWS::Region"
+                    }, "ARNPrefix"]
+                  },
+                  "logs:*:*:*"
+                ]]
+              }, "*"]
+            }]
+          }
+        }]
+      }
+    },
+
+    "ApiServerRoleInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [{
+          "Ref": "ApiServerRole"
+        }]
+      }
+    },
+
+    "ApiServerLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "RetentionInDays": 7
+      }
+    },
+
+    "404MetricFilter": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Properties": {
+        "LogGroupName": {
+          "Ref": "ApiServerLogGroup"
+        },
+        "FilterPattern": "[ip, identity, user_id, timestamp, request, status_code = 404, size, ...]",
+        "MetricTransformations": [{
+          "MetricValue": "1",
+          "MetricNamespace": "test/404s",
+          "MetricName": "test404Count"
+        }]
+      }
+    },
+
+    "BytesTransferredMetricFilter": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Properties": {
+        "LogGroupName": {
+          "Ref": "ApiServerLogGroup"
+        },
+        "FilterPattern": "[ip, identity, user_id, timestamp, request, status_code, size, ...]",
+        "MetricTransformations": [{
+          "MetricValue": "$size",
+          "MetricNamespace": "test/BytesTransferred",
+          "MetricName": "testBytesTransferred"
+        }]
+      }
+    },
+
+    "ApiServerLaunchConfig": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Metadata": {
+        "AWS::CloudFormation::Init": {
+          "configSets": {
+            "install_all": ["install_cfn", "install_app", "install_logs"]
+          },
+          "install_cfn": {
+            "files": {
+              "/etc/cfn/cfn-hup.conf": {
+                "content": {
+                  "Fn::Join": ["", [
+                    "[main]\n",
+                    "stack=", {
+                      "Ref": "AWS::StackId"
+                    }, "\n",
+                    "region=", {
+                      "Ref": "AWS::Region"
+                    }, "\n"
+                  ]]
+                },
+                "mode": "000400",
+                "owner": "root",
+                "group": "root"
+              },
+
+              "/etc/cfn/hooks.d/cfn-auto-reloader.conf": {
+                "content": {
+                  "Fn::Join": ["", [
+                    "[cfn-auto-reloader-hook]\n",
+                    "triggers=post.update\n",
+                    "path=Resources.ApiServerLaunchConfig.Metadata.AWS::CloudFormation::Init\n",
+                    "action=/opt/aws/bin/cfn-init -v ",
+                    "         --stack ", {
+                      "Ref": "AWS::StackName"
+                    },
+                    "         --resource ApiServerLaunchConfig ",
+                    "         --configsets install_all ",
+                    "         --region ", {
+                      "Ref": "AWS::Region"
+                    }, " || error_exit 'Failed to run cfn-init.'\n",
+                    "runas=root\n"
+                  ]]
+                }
+              }
+            },
+            "services": {
+              "sysvint": {
+                "codedeploy-agent": {
+                  "enabled": "true",
+                  "ensureRunning": "true"
+                }
+              },
+              "cfn-hup": {
+                "enabled": "true",
+                "ensureRunning": "true",
+                "files": ["/etc/cfn/cfn-hup.conf", "/etc/cfn/hooks.d/cfn-auto-reloader.conf"]
+              }
+            }
+          },
+          "install_app": {
+            "files": {
+              "/var/tmp/api-server/scripts/npm-install.sh": {
+                "content": {
+                  "Fn::Join": ["\n", [
+                    "#!/bin/bash",
+                    "cd /var/api",
+                    "npm install"
+                  ]]
+                },
+                "mode": "000755",
+                "owner": "root",
+                "group": "root"
+              },
+              "/var/tmp/api-server/scripts/npm-start.sh": {
+                "content": {
+                  "Fn::Join": ["\n", [
+                    "#!/bin/bash",
+                    "cd /var/api",
+                    "npm start"
+                  ]]
+                },
+                "mode": "000755",
+                "owner": "root",
+                "group": "root"
+              }
+            }
+          },
+
+          "install_logs": {
+            "packages": {
+              "yum": {
+                "awslogs": []
+              }
+            },
+
+            "files": {
+              "/etc/awslogs/awslogs.conf": {
+                "content": {
+                  "Fn::Join": ["", [
+                    "[general]\n",
+                    "state_file= /var/awslogs/state/agent-state\n",
+
+                    "[/var/log/cloud-init.log]\n",
+                    "file = /var/log/cloud-init.log\n",
+                    "log_group_name = ", {
+                      "Ref": "ApiServerLogGroup"
+                    }, "\n",
+                    "log_stream_name = {instance_id}/cloud-init.log\n",
+                    "datetime_format = \n",
+
+                    "[/var/log/cloud-init-output.log]\n",
+                    "file = /var/log/cloud-init-output.log\n",
+                    "log_group_name = ", {
+                      "Ref": "ApiServerLogGroup"
+                    }, "\n",
+                    "log_stream_name = {instance_id}/cloud-init-output.log\n",
+                    "datetime_format = \n",
+
+                    "[/var/log/cfn-init.log]\n",
+                    "file = /var/log/cfn-init.log\n",
+                    "log_group_name = ", {
+                      "Ref": "ApiServerLogGroup"
+                    }, "\n",
+                    "log_stream_name = {instance_id}/cfn-init.log\n",
+                    "datetime_format = \n",
+
+                    "[/var/log/cfn-hup.log]\n",
+                    "file = /var/log/cfn-hup.log\n",
+                    "log_group_name = ", {
+                      "Ref": "ApiServerLogGroup"
+                    }, "\n",
+                    "log_stream_name = {instance_id}/cfn-hup.log\n",
+                    "datetime_format = \n",
+
+                    "[/var/log/cfn-wire.log]\n",
+                    "file = /var/log/cfn-wire.log\n",
+                    "log_group_name = ", {
+                      "Ref": "ApiServerLogGroup"
+                    }, "\n",
+                    "log_stream_name = {instance_id}/cfn-wire.log\n",
+                    "datetime_format = \n"
+                  ]]
+                },
+                "mode": "000444",
+                "owner": "root",
+                "group": "root"
+              }
+            },
+            "commands": {
+              "01_create_state_directory": {
+                "command": "mkdir -p /var/awslogs/state"
+              }
+            },
+            "services": {
+              "sysvinit": {
+                "awslogs": {
+                  "enabled": "true",
+                  "ensureRunning": "true",
+                  "files": ["/etc/awslogs/awslogs.conf"]
+                }
+              }
+            }
+          }
+        }
+      },
+      "Properties": {
+        "ImageId": {
+          "Fn::FindInMap": ["AWSRegionArch2AMI", {
+            "Ref": "AWS::Region"
+          }, {
+            "Fn::FindInMap": ["AWSInstanceType2Arch", {
+              "Ref": "ApiServerInstanceType"
+            }, "Arch"]
+          }]
+        },
+        "IamInstanceProfile": {
+          "Ref": "ApiServerRoleInstanceProfile"
+        },
+        "SecurityGroups": [{
+          "Ref": "CommonSecurityGroup"
+        }],
+        "InstanceType": {
+          "Ref": "ApiServerInstanceType"
+        },
+        "KeyName": {
+          "Ref": "KeyName"
+        },
+        "AssociatePublicIpAddress": "true",
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": ["", [
+              "#!/bin/bash -xe\n",
+              "# Install Dependencies\n",
+              "yum update -y aws-cfn-bootstrap\n",
+              "yum install -y aws-cli\n",
+              "yum install nodejs npm --enablerepo=epel -y\n",
+
+              "# Error Helper function.\n",
+              "function error_exit\n",
+              "{\n",
+              "  /opt/aws/bin/cfn-signal -e 1 -r \"$1\" ",
+              "    --stack ", {
+                "Ref": "AWS::StackId"
+              },
+              "    --resource ApiServerAutoScalingGroup ",
+              "    --region ", {
+                "Ref": "AWS::Region"
+              }, "\n",
+              "  exit 1\n",
+              "}\n",
+
+              "#Reroute IP Tables\n",
+              "iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 80 -j REDIRECT --to-port ", {
+                "Ref": "ApiServerPort"
+              }, " || error_exit 'Failed to set up iptables.' \n",
+
+              "#Add Environment Variables to bashrc\n",
+              "echo \"export NODE_ENV=", {
+                  "Ref": "EnvNodeEnv"
+                }, "\n",
+                "export DB_SERVER=", {
+                  "Ref": "EnvDbServer"
+                }, "\n",
+                "export DB_NAME=", {
+                  "Ref": "EnvDbName"
+                }, "\n",
+                "export TOKEN_SECRET=", {
+                  "Ref": "EnvTokenSecret"
+                }, "\n",
+                "export MANDRILL_USER=", {
+                  "Ref": "EnvMandrillUser"
+                }, "\n",
+                "export MANDRILL_PASSWORD=", {
+                  "Ref": "EnvMandrillPassword"
+                }, "\n",
+                "export FACEBOOK_ID=", {
+                  "Ref": "EnvFacebookAppId"
+                }, "\n",
+                "export FACEBOOK_SECRET=", {
+                  "Ref": "EnvFacebookSecret"
+                }, "\n",
+                "export GOOGLE_ID=", {
+                  "Ref": "EnvGoogleAppId"
+                }, "\n",
+                "export GOOGLE_SECRET=", {
+                  "Ref": "EnvGoogleSecret"
+                }, "\n",
+                "export PORT=", {
+                  "Ref": "ApiServerPort"
+                }, "\" >> /home/ec2-user/.bashrc || error_exit 'Failed to set environment variables in /home/ec2-user/.bashrc'\n",
+              "source /home/ec2-user/.bashrc\n",
+
+              "# Install the AWS CodeDeploy Agent.\n",
+              "cd /home/ec2-user/\n",
+              "aws s3 cp 's3://aws-codedeploy-us-west-2/latest/codedeploy-agent.noarch.rpm' . || error_exit 'Failed to download AWS CodeDeploy Agent.'\n",
+              "yum -y install codedeploy-agent.noarch.rpm || error_exit 'Failed to install AWS CodeDeploy Agent.' \n",
+
+              "# Install the application\n",
+              "/opt/aws/bin/cfn-init -v ",
+              "    --stack ", {
+                "Ref": "AWS::StackId"
+              },
+              "    --resource ApiServerLaunchConfig ",
+              "    --configsets install_all ",
+              "    --region ", {
+                "Ref": "AWS::Region"
+              }, " || error_exit 'Failed to run cfn-init.'\n",
+
+              "# Signal completion\n",
+              "/opt/aws/bin/cfn-signal -e $? ",
+              "    --stack ", {
+                "Ref": "AWS::StackId"
+              },
+              "    --resource ApiServerAutoScalingGroup ",
+              "    --region ", {
+                "Ref": "AWS::Region"
+              }, "\n"
+            ]]
+          }
+        }
+      }
+    },
+
+    "ApiServerScaleUpPolicy": {
+      "Type": "AWS::AutoScaling::ScalingPolicy",
+      "Properties": {
+        "AdjustmentType": "ChangeInCapacity",
+        "AutoScalingGroupName": {
+          "Ref": "ApiServerAutoScalingGroup"
+        },
+        "Cooldown": "60",
+        "ScalingAdjustment": "1"
+      }
+    },
+
+    "ApiServerScaleDownPolicy": {
+      "Type": "AWS::AutoScaling::ScalingPolicy",
+      "Properties": {
+        "AdjustmentType": "ChangeInCapacity",
+        "AutoScalingGroupName": {
+          "Ref": "ApiServerAutoScalingGroup"
+        },
+        "Cooldown": "60",
+        "ScalingAdjustment": "-1"
+      }
+    },
+
+    "CPUAlarmHigh": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Scale-up if CPU > 90% for 10 minutes",
+        "MetricName": "CPUUtilization",
+        "Namespace": "AWS/EC2",
+        "Statistic": "Average",
+        "Period": "300",
+        "EvaluationPeriods": "2",
+        "Threshold": "90",
+        "AlarmActions": [{
+          "Ref": "ApiServerScaleUpPolicy"
+        }, {
+          "Ref": "NotificationTopic"
+        }],
+        "Dimensions": [{
+          "Name": "AutoScalingGroupName",
+          "Value": {
+            "Ref": "ApiServerAutoScalingGroup"
+          }
+        }],
+        "ComparisonOperator": "GreaterThanThreshold"
+      }
+    },
+
+    "CPUAlarmLow": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Scale-down if CPU < 70% for 10 minutes",
+        "MetricName": "CPUUtilization",
+        "Namespace": "AWS/EC2",
+        "Statistic": "Average",
+        "Period": "300",
+        "EvaluationPeriods": "2",
+        "Threshold": "70",
+        "AlarmActions": [{
+          "Ref": "ApiServerScaleDownPolicy"
+        }, {
+          "Ref": "NotificationTopic"
+        }],
+        "Dimensions": [{
+          "Name": "AutoScalingGroupName",
+          "Value": {
+            "Ref": "ApiServerAutoScalingGroup"
+          }
+        }],
+        "ComparisonOperator": "LessThanThreshold"
+      }
+    },
+
+    "BandwidthAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "The average volume of traffic is greater 3500 KB over 10 minutes",
+        "MetricName": "BytesTransferred",
+        "Namespace": "test/BytesTransferred",
+        "Statistic": "Average",
+        "Period": "300",
+        "EvaluationPeriods": "2",
+        "Threshold": "3500",
+        "AlarmActions": [{
+          "Ref": "NotificationTopic"
+        }],
+        "Unit": "Kilobytes",
+        "ComparisonOperator": "GreaterThanThreshold"
+      }
+    },
+
+    "404Alarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "The number of 404s is greater than 2 over 2 minutes",
+        "MetricName": "404Count",
+        "Namespace": "test/404s",
+        "Statistic": "Sum",
+        "Period": "60",
+        "EvaluationPeriods": "2",
+        "Threshold": "2",
+        "AlarmActions": [{
+          "Ref": "NotificationTopic"
+        }],
+        "Unit": "Count",
+        "ComparisonOperator": "GreaterThanThreshold"
+      }
+    },
+
+    "CodeDeployTrustRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [{
+            "Sid": "1",
+            "Effect": "Allow",
+            "Principal": {
+              "Service": [
+                "codedeploy.us-east-1.amazonaws.com",
+                "codedeploy.us-west-2.amazonaws.com"
+              ]
+            },
+            "Action": "sts:AssumeRole"
+          }]
+        },
+        "Path": "/"
+      }
+    },
+
+    "CodeDeployRolePolicies": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "CodeDeployPolicy",
+        "PolicyDocument": {
+          "Statement": [{
+            "Effect": "Allow",
+            "Resource": [
+              "*"
+            ],
+            "Action": [
+              "ec2:Describe*"
+            ]
+          }, {
+            "Effect": "Allow",
+            "Resource": [
+              "*"
+            ],
+            "Action": [
+              "autoscaling:CompleteLifecycleAction",
+              "autoscaling:DeleteLifecycleHook",
+              "autoscaling:DescribeLifecycleHooks",
+              "autoscaling:DescribeAutoScalingGroups",
+              "autoscaling:PutLifecycleHook",
+              "autoscaling:RecordLifecycleActionHeartbeat"
+            ]
+          }]
+        },
+        "Roles": [{
+          "Ref": "CodeDeployTrustRole"
+        }]
+      }
+    }
+  },
+
+  "Outputs": {
+    "WebSite": {
+      "Description": "URL of the website",
+      "Value": {
+        "Fn::Join": ["", ["http://", {
+          "Fn::GetAtt": ["PublicElasticLoadBalancer", "DNSName"]
+        }]]
+      }
+    },
+
+    "ELBAccessLogsBucket": {
+      "Description": "DNS name of the S3 bucket storing ELB Access Logs",
+      "Value": {
+        "Fn::GetAtt": ["LogsBucket", "DomainName"]
+      }
+    },
+
+    "ApiServerAutoScalingGroup": {
+      "Description": "Auto Scaling Group",
+      "Value": {
+        "Ref": "ApiServerAutoScalingGroup"
+      }
+    },
+
+    "CodeDeployTrustRoleARN": {
+      "Value": {
+        "Fn::GetAtt": [
+          "CodeDeployTrustRole",
+          "Arn"
+        ]
+      }
+    },
+    "CloudWatchLogGroupName": {
+      "Description": "The name of the CloudWatch log group",
+      "Value": {
+        "Ref": "ApiServerLogGroup"
+      }
+    }
+  }
+}
