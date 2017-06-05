@@ -5,7 +5,7 @@ files:
      destination: /home/ec2-user/test2   
 hooks:
    ApplicationStart:
-   - location: startapache.sh
+   - location: scripts/startapache.sh
      timeout: 60
      runas: ec2-user    
 
