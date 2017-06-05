@@ -5,5 +5,5 @@ var server = http.createServer(function (request, response) {
   response.end("<h3>Node webserver running</h3>\n");
 });
 
-server.listen(8080);
-console.log("Node.js is listening on port 8080");  
+server.listen(3000);
+console.log("Node.js is listening on port 3000");  
