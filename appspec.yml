@@ -6,5 +6,5 @@ files:
 hooks:
    ApplicationStart:
    - location: scripts/startapache.sh
-     timeout: 60   
+       
 
