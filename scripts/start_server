@@ -1,8 +1,4 @@
 #!/bin/bash
-echo "forever list"
-forever list
-echo "forever stop"
-forever stop app.js
 echo "forever start"
 forever start /nodejs-seed/app.js
 
