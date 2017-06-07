@@ -1,4 +1,4 @@
 #!/bin/bash
 echo "forever start"
-sudo forever start /nodejs-seed/app.js
+sudo forever start /home/ec2-user/nodejs-seed/app.js
 
