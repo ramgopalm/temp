@@ -1,3 +1,4 @@
 #!/bin/bash
 sudo npm install -g forever
+sudo npm install -g express
 
