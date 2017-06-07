@@ -1,4 +1,5 @@
 #!/bin/bash
-echo "forever start"
-sudo forever start /home/ec2-user/nodejs-seed/app.js
-echo "looks like it started"
+sudo forever list
+echo "listed running apps"
+sudo forever stopall
+echo "stopped all apps"
